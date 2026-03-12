@@ -1,54 +1,55 @@
-# Docker Build for Hillhorn VS Code (Windows 11)
+# Сборка Hillhorn VS Code в Docker (Windows 11)
 
-Build VS Code in Linux container. Output is platform-agnostic JS; native modules rebuilt on Windows host.
+Сборка VS Code в Linux-контейнере. Результат — платформо-независимый JS; нативные модули пересобираются на хост-машине Windows.
 
-## Prerequisites
+## Требования
 
-- Docker Desktop (WSL2 backend)
+- Docker Desktop (бэкенд WSL2)
 - Windows 11
 
-## 1. Install Docker
+## 1. Установка Docker
 
 ```powershell
-# As Administrator
+# От имени администратора
 .\scripts\install_docker.ps1
 ```
 
-Restart PC, start Docker Desktop.
+Перезагрузите ПК, запустите Docker Desktop.
 
-## 2. Prepare (run once)
+## 2. Подготовка (один раз)
 
 ```powershell
 .\scripts\prepare_docker.ps1
 ```
 
-Checks: Docker, daemon, pulls node:22 image, validates project.
+Проверяет: Docker, демон, загружает образ node:22, валидирует проект.
 
-## 3. Build VS Code
+## 3. Сборка VS Code
 
 ```powershell
 .\scripts\build_vscode_docker.ps1
 ```
 
-Or via compose:
+Или через compose:
+
 ```powershell
 docker compose -f docker/docker-compose.yml run --rm vscode-build
 ```
 
-Duration: 15-30 min (first run).
+Длительность: 15–30 мин (первый запуск).
 
-## 4. Windows Native Modules
+## 4. Нативные модули на Windows
 
-After Docker build, on host:
+После сборки в Docker на хост-машине:
 
 ```powershell
 cd vscode
 npm install
 ```
 
-Rebuilds native modules for Windows. If node-gyp fails, install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with C++ workload.
+Пересобирает нативные модули для Windows. Если node-gyp не работает, установите [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) с рабочей нагрузкой C++.
 
-## 5. Run
+## 5. Запуск
 
 ```powershell
 .\scripts\code.bat
