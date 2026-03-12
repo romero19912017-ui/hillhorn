@@ -9,3 +9,6 @@ vscode/
 jepa-reference/
 jepa-wms/
 nwf-core/
+hillhorn*.zip
+*.zip
+repo_body.json

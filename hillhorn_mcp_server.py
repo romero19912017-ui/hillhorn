@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Hillhorn MCP Server - smart memory with DeepSeek. Replacement for NWF extension."""
+"""Hillhorn MCP Server — интеллектуальная память с DeepSeek. Замена расширения NWF."""
 
 from __future__ import annotations
 
@@ -23,13 +23,13 @@ ACTIVITY_FILE = ROOT / "data" / "hillhorn_activity.json"
 ERRORS_LOG = ROOT / "data" / "hillhorn_errors.log"
 CALLS_LOG = ROOT / "data" / "hillhorn_calls.jsonl"
 
-# Retry: 2 attempts, 2 sec delay (ConnectError)
+# Retry: 2 попытки, 2 сек задержка (ConnectError)
 POST_RETRIES = 2
 POST_RETRY_DELAY = 2.0
 
 
 def _log_activity(tool_name: str) -> None:
-    """Write last tool use for status indicator."""
+    """Запись последнего вызова инструмента для индикатора статуса."""
     try:
         ACTIVITY_FILE.parent.mkdir(parents=True, exist_ok=True)
         data = {"last_use": time.time(), "last_tool": tool_name}
@@ -39,7 +39,7 @@ def _log_activity(tool_name: str) -> None:
 
 
 def _log_call(tool_name: str, duration_ms: float) -> None:
-    """Append tool call to hillhorn_calls.jsonl for history."""
+    """Добавление вызова в hillhorn_calls.jsonl для истории."""
     try:
         CALLS_LOG.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps({"tool": tool_name, "ts": time.time(), "duration_ms": round(duration_ms, 0)}) + "\n"
@@ -50,7 +50,7 @@ def _log_call(tool_name: str, duration_ms: float) -> None:
 
 
 def _log_error(tool_name: str, exc: Exception) -> None:
-    """Append error to hillhorn_errors.log."""
+    """Добавление ошибки в hillhorn_errors.log."""
     try:
         ERRORS_LOG.parent.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
@@ -62,12 +62,12 @@ def _log_error(tool_name: str, exc: Exception) -> None:
 
 
 def _wrap(tool_name: str, content: str) -> str:
-    """Prefix response for visibility in agent chat: Hillhorn | tool_name."""
+    """Префикс ответа для отображения в чате агента: Hillhorn | tool_name."""
     return f"[Hillhorn | {tool_name}]\n{content}"
 
 
 async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """POST JSON to Gateway with retry on ConnectError."""
+    """POST JSON в Gateway с retry при ConnectError."""
     url = f"{GATEWAY_URL.rstrip('/')}{path}"
     last_err: Optional[Exception] = None
     for attempt in range(POST_RETRIES):
@@ -96,7 +96,7 @@ async def _search_memory_direct(
     kind_filter: Optional[List[str]] = None,
     recency_boost: bool = False,
 ) -> Dict[str, Any]:
-    """Call tools.search_memory and nwf_adapter directly, no Gateway HTTP."""
+    """Вызов tools.search_memory и nwf_adapter напрямую, без HTTP Gateway."""
     try:
         from tools import search_memory
         result = await search_memory(
@@ -132,7 +132,7 @@ async def _add_memory_direct(
 
 
 def _read_project_context(project_id: str) -> str:
-    """Read SOUL.md, USER.md, MEMORY.md from project root."""
+    """Чтение SOUL.md, USER.md, MEMORY.md из корня проекта."""
     parts = []
     base = Path(project_id) if project_id else ROOT
     for name in ("SOUL.md", "USER.md", "MEMORY.md"):
@@ -153,7 +153,7 @@ async def hillhorn_get_context(
     include_memory_search: bool = True,
     memory_top_k: int = 5,
 ) -> str:
-    """Get project context: SOUL, USER, MEMORY + recent memory. Call at start of session."""
+    """Получить контекст проекта: SOUL, USER, MEMORY и свежая память. Вызывать в начале сессии."""
     t0 = time.perf_counter()
     ctx_parts = []
     files_ctx = _read_project_context(project_id)
@@ -186,7 +186,7 @@ async def hillhorn_search(
     kind_filter: Optional[List[str]] = None,
     recency_boost: bool = False,
 ) -> str:
-    """Semantic search in Hillhorn memory. kind_filter: doc, code, conversation. recency_boost for recent items."""
+    """Семантический поиск в памяти Hillhorn. kind_filter: doc, code, conversation. recency_boost — приоритет свежим."""
     t0 = time.perf_counter()
     try:
         data = await _search_memory_direct(
@@ -222,7 +222,7 @@ async def hillhorn_add_turn(
     kind: str = "conversation",
     file_path: Optional[str] = None,
 ) -> str:
-    """Add fact or dialog turn to Hillhorn memory. Use after important decisions or studying code."""
+    """Добавить факт или реплику в память Hillhorn. Использовать после важных решений или изучения кода."""
     t0 = time.perf_counter()
     try:
         data = await _add_memory_direct(text, kind, role, file_path, project_id)
@@ -242,7 +242,7 @@ async def hillhorn_index_file(
     content: str,
     project_id: str = DEFAULT_PROJECT_ID,
 ) -> str:
-    """Index file content into memory. For critical project files."""
+    """Проиндексировать содержимое файла в память. Для критичных файлов проекта."""
     t0 = time.perf_counter()
     try:
         data = await _add_memory_direct(f"[{file_path}]\n{content}", "code", "file", file_path, project_id)
@@ -270,7 +270,7 @@ async def hillhorn_consult_agent(
     extra_context: Optional[List[str]] = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """Consult Hillhorn agent: planner, coder, reviewer, chat. extra_context: list of text fragments for context."""
+    """Консультация агента Hillhorn: planner, coder, reviewer, chat. extra_context: список фрагментов текста."""
     allowed = ("planner", "coder", "reviewer", "chat", "architect", "documenter")
     if agent_type not in allowed:
         return _wrap("hillhorn_consult_agent", f"Unknown agent. Use: {', '.join(allowed)}")
@@ -332,7 +332,7 @@ async def hillhorn_consult_with_memory(
     extra_context: Optional[List[str]] = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """Consult DeepSeek agent with project memory. Use planner only for complex tasks. Saves API cost."""
+    """Консультация DeepSeek с памятью проекта. planner только для сложных задач. Экономит API."""
     allowed = ("planner", "coder", "reviewer", "chat", "architect", "documenter")
     if agent_type not in allowed:
         return _wrap("hillhorn_consult_with_memory", f"Unknown agent. Use: {', '.join(allowed)}")

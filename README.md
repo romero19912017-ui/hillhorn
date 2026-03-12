@@ -47,6 +47,11 @@ Smart memory and AI assistant for Cursor with DeepSeek MCP Gateway.
 - DEEPSEEK_API_KEY in `.env`
 - Cursor with MCP (Hillhorn configured)
 
+### Acknowledgments
+
+NWF (Neuro-Weight Fields) основана на теории нейровесовых полей. Автор: **Роман Белоусов**.  
+Статья: [https://doi.org/10.24108/preprints-3113697](https://doi.org/10.24108/preprints-3113697)
+
 ### License
 
 MIT - see [LICENSE](LICENSE)

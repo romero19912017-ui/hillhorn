@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Code indexer: scan project, extract blocks, build embeddings, search."""
+"""Индексатор кода: сканирование проекта, извлечение блоков, эмбеддинги, семантический поиск."""
 
 from __future__ import annotations
 
@@ -14,14 +14,17 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parent
 CODE_INDEX_PATH = Path(os.getenv("CODE_INDEX_PATH", str(ROOT / "data" / "code_index")))
 
+# Каталоги, исключаемые из индексации
 DEFAULT_IGNORE = [
     "node_modules", "venv", "__pycache__", ".git", "dist", "build",
     ".next", "target", ".venv", "venv_hillhorn",
 ]
+# Расширения файлов для индексации
 CODE_EXT = (".py", ".ts", ".tsx", ".js", ".jsx")
 
 
 def _should_ignore(path: Path, base: Path) -> bool:
+    """Проверить, нужно ли игнорировать путь (node_modules, venv и т.п.)."""
     rel = path.relative_to(base) if base in path.parents or path == base else path
     parts = rel.parts
     for p in parts:
@@ -33,7 +36,7 @@ def _should_ignore(path: Path, base: Path) -> bool:
 
 
 def _parse_python_blocks(content: str, file_path: str) -> List[Dict[str, Any]]:
-    """Extract functions and classes from Python via ast."""
+    """Извлечь функции и классы из Python через ast."""
     blocks = []
     try:
         tree = ast.parse(content)
@@ -54,7 +57,7 @@ def _parse_python_blocks(content: str, file_path: str) -> List[Dict[str, Any]]:
 
 
 def _parse_js_blocks(content: str, file_path: str) -> List[Dict[str, Any]]:
-    """Extract functions and classes via regex (JS/TS)."""
+    """Извлечь функции и классы через regex (JS/TS)."""
     blocks = []
     patterns = [
         (r"function\s+(\w+)\s*\(", "function"),
@@ -78,13 +81,14 @@ def _parse_js_blocks(content: str, file_path: str) -> List[Dict[str, Any]]:
 
 
 def _extract_blocks(path: Path, content: str, rel_path: str) -> List[Dict[str, Any]]:
+    """Извлечь блоки кода (Python или JS/TS)."""
     if path.suffix == ".py":
         return _parse_python_blocks(content, rel_path)
     return _parse_js_blocks(content, rel_path)
 
 
 class CodeIndexer:
-    """Index codebase for semantic search."""
+    """Индексатор кодовой базы для семантического поиска."""
 
     def __init__(
         self,
@@ -125,7 +129,7 @@ class CodeIndexer:
         return f"file:{block['file']}\nname:{block['name']}\nkind:{block['kind']}\n\n{block['snippet']}"
 
     def index_file(self, path: Path) -> int:
-        """Index single file. Returns count of blocks added."""
+        """Проиндексировать один файл. Возвращает количество добавленных блоков."""
         rel = path.relative_to(self.workspace_path)
         rel_str = str(rel).replace("\\", "/")
         try:
@@ -168,7 +172,7 @@ class CodeIndexer:
         return added
 
     def _remove_file_from_index(self, rel_str: str) -> None:
-        """Remove all charges for given file from index."""
+        """Удалить все заряды для указанного файла из индекса."""
         ids = self._file_to_ids.get(rel_str, [])
         if ids and hasattr(self._field, "remove"):
             self._field.remove(ids)
@@ -176,7 +180,7 @@ class CodeIndexer:
         self._rebuild_file_map()
 
     def index_workspace(self) -> int:
-        """Index entire workspace. Returns total blocks indexed."""
+        """Проиндексировать весь workspace. Возвращает общее количество блоков."""
         total = 0
         for path in self.workspace_path.rglob("*"):
             if not path.is_file():
@@ -192,7 +196,7 @@ class CodeIndexer:
         return total
 
     def search_code(self, query: str, k: int = 10) -> List[Dict[str, Any]]:
-        """Semantic search over indexed code."""
+        """Семантический поиск по проиндексированному коду."""
         if self._field is None:
             self._load_field()
         if self._field is None or len(self._field) == 0:

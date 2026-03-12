@@ -175,15 +175,15 @@ class TesterMathAgent(BaseAgent):
 
 
 def _text_embedding_simple(text: str, dim: int = 32):
-    """Unified embedding via embeddings module."""
+    """Единый эмбеддинг через модуль embeddings."""
     from embeddings import get_embedding
     return get_embedding(text, dim=dim)
 
 
 def select_agent_from_memory(memory_path: str, user_request: str, k: int = 10) -> str:
     """
-    Choose best agent from NWF memory based on similar past requests.
-    Returns agent_type: coder, planner, reviewer, chat.
+    Выбрать наиболее подходящего агента из NWF-памяти по похожим прошлым запросам.
+    Возвращает agent_type: coder, planner, reviewer, chat.
     """
     try:
         from nwf import Field

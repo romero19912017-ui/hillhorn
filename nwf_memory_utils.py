@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""NWF memory utilities: pruning, export, import."""
+"""Утилиты NWF-памяти: очистка (prune), экспорт, импорт."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def prune_field(
     max_age_days: float = 90.0,
     min_alpha: float = 0.05,
 ) -> int:
-    """Remove old/low-priority charges. Returns number of charges removed."""
+    """Удалить старые/низкоприоритетные заряды. Возвращает количество удалённых."""
     import os
     fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
     if not (fp / "meta.json").exists():
@@ -54,7 +54,7 @@ def prune_field(
 
 
 def export_field(field_path: Optional[Path] = None, out_path: Optional[Path] = None) -> bool:
-    """Export NWF field to file (copy directory)."""
+    """Экспортировать NWF-поле в каталог (копирование)."""
     import shutil
     import os
     fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
@@ -69,7 +69,7 @@ def export_field(field_path: Optional[Path] = None, out_path: Optional[Path] = N
 
 
 def import_field(src_path: Path, dest_path: Optional[Path] = None) -> bool:
-    """Import NWF field from path. Replaces dest."""
+    """Импортировать NWF-поле из пути. Заменяет dest."""
     import shutil
     import os
     dest = dest_path or Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))

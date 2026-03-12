@@ -28,14 +28,14 @@ from pydantic import BaseModel
 from nwf import Charge, Field
 
 # -----------------------------------------------------------------------------
-# Config
+# Конфигурация
 # -----------------------------------------------------------------------------
 
 ROOT = Path(__file__).resolve().parent
 ENV_PATH = ROOT / ".env"
 ENV_EXAMPLE = ROOT / ".env.example"
 
-# Runtime config (API key can be updated via settings without restart)
+# Runtime config: ключ API можно обновить через /settings без перезапуска
 _runtime_config: Dict[str, Any] = {"api_key": os.getenv("DEEPSEEK_API_KEY")}
 
 
@@ -44,7 +44,7 @@ def _get_api_key() -> str:
 
 
 def _save_api_key_to_env(api_key: str) -> None:
-    """Save DEEPSEEK_API_KEY to .env and update runtime config."""
+    """Сохранение DEEPSEEK_API_KEY в .env и обновление runtime config."""
     lines: List[str] = []
     if ENV_PATH.exists():
         lines = ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -96,7 +96,7 @@ def _get_model(agent_type: str) -> str:
 
 
 def _log_usage(agent_type: str, input_tokens: int, output_tokens: int, model: str) -> None:
-    """Log token usage to data/deepseek_usage.json for cost tracking."""
+    """Запись использования токенов в data/deepseek_usage.json для учёта расходов."""
     try:
         date_key = time.strftime("%Y-%m-%d", time.localtime())
         data: Dict[str, Any] = {}
@@ -120,7 +120,7 @@ def _log_usage(agent_type: str, input_tokens: int, output_tokens: int, model: st
 
 AGENT_TO_MODEL = _AGENT_TO_MODEL_BASE
 
-# System prompts for DeepSeek agents (Hillhorn/Cursor workflow)
+# Системные промпты для агентов DeepSeek (рабочий процесс Hillhorn + Cursor)
 SYSTEM_PROMPTS = {
     "coder": (
         "You are an expert software engineer. Use tools: read_file, write_file, execute_command, search_code, search_memory. "
@@ -156,7 +156,7 @@ SYSTEM_PROMPTS = {
 }
 
 # -----------------------------------------------------------------------------
-# Pydantic models
+# Pydantic-модели запросов и ответов
 # -----------------------------------------------------------------------------
 
 
@@ -181,12 +181,12 @@ class AgentResponse(BaseModel):
     reasoning: Optional[str] = None
 
 # -----------------------------------------------------------------------------
-# NWF memory
+# NWF-память: загрузка и логирование вызовов
 # -----------------------------------------------------------------------------
 
 
 def _text_to_embedding(text: str, dim: int = EMBED_DIM) -> np.ndarray:
-    """Unified embedding via embeddings module."""
+    """Единый эмбеддинг через модуль embeddings (hash или sentence-transformers)."""
     from embeddings import get_embedding
     return get_embedding(text, dim=dim)
 
@@ -214,7 +214,7 @@ def _log_to_nwf(
     success: bool,
     error_code: Optional[int] = None,
 ) -> None:
-    """Save API call as Charge in NWF field."""
+    """Сохранить вызов API как Charge в NWF-поле. Используется для семантического поиска похожих запросов."""
     try:
         text_for_embed = f"{agent_type}:{prompt[:500]}"
         z = _text_to_embedding(text_for_embed)
@@ -235,7 +235,7 @@ def _log_to_nwf(
         memory.add(charge, labels=[label])
         if len(memory) > 0:
             memory.save(NWF_MEMORY_PATH)
-        # Auto-prune when exceeding threshold (background, non-blocking)
+        # Автоочистка при превышении порога (в фоне, не блокирует)
         prune_threshold = int(os.getenv("NWF_PRUNE_THRESHOLD", "12000"))
         if len(memory) > prune_threshold:
             import threading
@@ -250,12 +250,12 @@ def _log_to_nwf(
         pass
 
 # -----------------------------------------------------------------------------
-# DeepSeek API
+# DeepSeek API: вызовы, стриминг, retry, tool execution
 # -----------------------------------------------------------------------------
 
 
 def _sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Remove reasoning_content from assistant messages. Preserve tool/tool_calls."""
+    """Убрать reasoning_content из сообщений assistant. Сохранить tool/tool_calls."""
     out: List[Dict[str, Any]] = []
     for m in messages:
         if not isinstance(m, dict):
@@ -281,7 +281,7 @@ async def _execute_tool(
     workspace_id: Optional[str] = None,
     workspace_path: Optional[str] = None,
 ) -> str:
-    """Execute tool and return JSON string result."""
+    """Выполнить инструмент и вернуть результат в виде JSON-строки."""
     try:
         from tools import TOOL_MAP, set_workspace_override
         set_workspace_override(workspace_path)
@@ -312,7 +312,7 @@ async def _call_deepseek_stream(
     url: str,
     headers: Dict[str, str],
 ) -> AgentResponse:
-    """Streaming call for deepseek-reasoner (reasoning_content + content)."""
+    """Стриминговый вызов для deepseek-reasoner (reasoning_content + content)."""
     payload = {
         "model": model,
         "messages": messages,
@@ -496,7 +496,7 @@ async def call_deepseek(
     )
 
 # -----------------------------------------------------------------------------
-# FastAPI app
+# FastAPI приложение: эндпоинты, health, settings
 # -----------------------------------------------------------------------------
 
 app = FastAPI(title="DeepSeek MCP Gateway")
@@ -633,7 +633,7 @@ async def debug_reviewer() -> Dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# Memory API for Hillhorn MCP (replacement for NWF extension)
+# Memory API для Hillhorn MCP (замена расширения NWF)
 # -----------------------------------------------------------------------------
 
 
@@ -665,7 +665,7 @@ class MemoryIndexRequest(BaseModel):
 
 @app.post("/v1/memory/search")
 async def memory_search(req: MemorySearchRequest) -> Dict[str, Any]:
-    """Semantic search in NWF memory (DeepSeek + workspace)."""
+    """Семантический поиск в NWF-памяти (DeepSeek + workspace)."""
     try:
         from tools import search_memory
         ws_id = req.project_id
@@ -696,7 +696,7 @@ async def memory_search(req: MemorySearchRequest) -> Dict[str, Any]:
 
 @app.post("/v1/memory/add")
 async def memory_add(req: MemoryAddRequest) -> Dict[str, Any]:
-    """Add turn/fact to NWF memory."""
+    """Добавить реплику/факт в NWF-память."""
     try:
         from tools import add_to_memory
         tags = [req.kind or "conversation", req.role or "system"]
@@ -712,7 +712,7 @@ async def memory_add(req: MemoryAddRequest) -> Dict[str, Any]:
 
 @app.post("/v1/memory/index_file")
 async def memory_index_file(req: MemoryIndexRequest) -> Dict[str, Any]:
-    """Index file content into memory."""
+    """Проиндексировать содержимое файла в память."""
     try:
         from tools import add_to_memory
         text = f"[{req.file_path}]\n{req.content}"
@@ -726,7 +726,7 @@ async def memory_index_file(req: MemoryIndexRequest) -> Dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# Settings (API key)
+# Настройки: страница для ввода DEEPSEEK_API_KEY
 # -----------------------------------------------------------------------------
 
 SETTINGS_HTML = """

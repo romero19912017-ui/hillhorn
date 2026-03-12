@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tools for function calling: search_memory, read_file, write_file, execute_command, call_agent."""
+"""Инструменты для вызова: search_memory, read_file, write_file, execute_command, call_agent."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Корень проекта и рабочая директория
 ROOT = Path(__file__).resolve().parent
 WORKSPACE = Path(os.getenv("MOLTBOT_WORKSPACE", str(ROOT / "workspace")))
 _workspace_override: ContextVar[Optional[Path]] = ContextVar("workspace_override", default=None)
@@ -21,26 +22,31 @@ def _get_workspace() -> Path:
 
 
 def set_workspace_override(path: Optional[str]) -> None:
+    """Установить переопределение рабочей директории (для Gateway)."""
     _workspace_override.set(Path(path) if (path and path.strip()) else None)
+
+# Путь к NWF-памяти и URL Gateway
 NWF_MEMORY_PATH = Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
 GATEWAY_URL = os.getenv("DEEPSEEK_GATEWAY_URL", "http://localhost:8001")
 EMBED_DIM = 32
 CMD_TIMEOUT = 60
 
+# Разрешённые команды (белый список)
 ALLOWED_CMDS = frozenset([
     "python", "python3", "py", "pip", "npm", "npx", "pnpm", "node", "yarn",
     "git", "pytest", "cargo", "uvicorn", "gulp", "tsc",
 ])
+# Опасные паттерны — запрещены в командах
 DANGEROUS_PATTERNS = ("rm -rf", "del /f", "format", "> /dev/sd", "&&", "|", ";", "`")
 
 def _embed(text: str, dim: int = EMBED_DIM):
-    """Unified embedding via embeddings module."""
+    """Единый эмбеддинг через модуль embeddings."""
     from embeddings import get_embedding
     return get_embedding(text, dim=dim)
 
 
 def _safe_path(path: str) -> Path:
-    """Resolve path within workspace. Raise if outside."""
+    """Разрешение пути в пределах workspace. Ошибка при выходе за пределы."""
     ws = _get_workspace()
     p = Path(path)
     if not p.is_absolute():
@@ -62,7 +68,7 @@ async def search_memory(
     kind_filter: Optional[List[str]] = None,
     recency_boost: bool = False,
 ) -> Dict[str, Any]:
-    """Search similar past requests in NWF memory. add_to_memory and search use same storage."""
+    """Поиск похожих запросов в NWF-памяти. add_to_memory и search используют одно хранилище."""
     try:
         import numpy as np
         import time as _time
@@ -117,7 +123,7 @@ async def search_memory(
 
 
 async def add_to_memory(content: str, tags: Optional[List[str]] = None, project_id: Optional[str] = None) -> Dict[str, Any]:
-    """Add content to NWF memory. Same storage as search_memory."""
+    """Добавить контент в NWF-память. То же хранилище, что и search_memory."""
     try:
         from nwf import Charge, Field
         import numpy as np
@@ -144,7 +150,7 @@ async def add_to_memory(content: str, tags: Optional[List[str]] = None, project_
 
 
 async def read_file(path: str) -> Dict[str, Any]:
-    """Read file content. Path relative to workspace."""
+    """Чтение файла. Путь относительно workspace."""
     try:
         p = _safe_path(path)
         if not p.exists():
@@ -160,7 +166,7 @@ async def read_file(path: str) -> Dict[str, Any]:
 
 
 async def write_file(path: str, content: str, overwrite: bool = False) -> Dict[str, Any]:
-    """Write content to file. Path relative to workspace."""
+    """Запись в файл. Путь относительно workspace."""
     try:
         p = _safe_path(path)
         if p.exists() and not overwrite:
@@ -175,7 +181,7 @@ async def write_file(path: str, content: str, overwrite: bool = False) -> Dict[s
 
 
 def _check_command_safe(command: str) -> bool:
-    cmd_lower = command.lower()
+    """Проверить, что команда безопасна: в белом списке, без опасных паттернов."""
     for pat in DANGEROUS_PATTERNS:
         if pat in command:
             return False
@@ -189,7 +195,7 @@ def _check_command_safe(command: str) -> bool:
 
 
 async def execute_command(command: str, cwd: Optional[str] = None) -> Dict[str, Any]:
-    """Execute shell command. Whitelist: python, npm, git, pytest, etc. No pipes or redirects."""
+    """Выполнение команды в shell. Белый список: python, npm, git, pytest и др. Без пайпов и редиректов."""
     if not _check_command_safe(command):
         return {"error": "Command not allowed. Whitelist: python, npm, git, pytest, pip, node, etc."}
     try:
@@ -216,23 +222,23 @@ async def execute_command(command: str, cwd: Optional[str] = None) -> Dict[str, 
 
 
 async def git_status(cwd: Optional[str] = None) -> Dict[str, Any]:
-    """Get git status. cwd is path relative to workspace."""
+    """Получить статус git. cwd — путь относительно workspace."""
     return await execute_command("git status --short", cwd=cwd)
 
 
 async def git_diff(cwd: Optional[str] = None, file_path: Optional[str] = None) -> Dict[str, Any]:
-    """Get git diff. Optional file_path for specific file."""
+    """Получить git diff. Опционально file_path для конкретного файла."""
     cmd = "git diff" + (f" -- {file_path}" if file_path else "")
     return await execute_command(cmd, cwd=cwd)
 
 
 async def git_log(cwd: Optional[str] = None, n: int = 10) -> Dict[str, Any]:
-    """Get last n git log entries."""
+    """Получить последние n записей git log."""
     return await execute_command(f"git log -{n} --oneline", cwd=cwd)
 
 
 async def search_code(query: str, k: int = 10, workspace_id: Optional[str] = None) -> Dict[str, Any]:
-    """Search indexed codebase by semantic similarity."""
+    """Поиск по индексированному коду по семантическому сходству."""
     try:
         from code_indexer import CodeIndexer
         ws = _get_workspace() if not workspace_id else _get_workspace() / workspace_id
@@ -246,7 +252,7 @@ async def search_code(query: str, k: int = 10, workspace_id: Optional[str] = Non
 
 
 async def call_agent(agent_type: str, prompt: str) -> Dict[str, Any]:
-    """Call another agent (coder, reviewer, chat, planner)."""
+    """Вызов агента (coder, reviewer, chat, planner)."""
     import httpx
     allowed = {"coder", "reviewer", "chat", "planner", "architect", "documenter"}
     if agent_type not in allowed:
@@ -265,6 +271,7 @@ async def call_agent(agent_type: str, prompt: str) -> Dict[str, Any]:
         return {"error": str(e), "content": ""}
 
 
+# Сопоставление имён инструментов с функциями
 TOOL_MAP = {
     "search_memory": search_memory,
     "add_to_memory": add_to_memory,
@@ -278,6 +285,7 @@ TOOL_MAP = {
     "git_log": git_log,
 }
 
+# Определения инструментов для DeepSeek (function calling)
 TOOL_DEFINITIONS = [
     {
         "type": "function",

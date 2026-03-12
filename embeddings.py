@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unified embeddings for Hillhorn: hash (default) or sentence-transformers with projection."""
+"""Единый модуль эмбеддингов для Hillhorn: hash (по умолчанию) или sentence-transformers с проекцией."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Optional
 
 import numpy as np
 
+# Размерность эмбеддинга (32 — компактно, совместимо с NWF)
 EMBED_DIM = 32
 SEMANTIC_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 SEMANTIC_DIM = 384
@@ -17,14 +18,14 @@ _encoder = None
 
 
 def _hash_embedding(text: str, dim: int = EMBED_DIM) -> np.ndarray:
-    """Deterministic hash-based embedding (matches legacy behavior)."""
+    """Детерминированный эмбеддинг на основе SHA256-хеша (совместимость с legacy)."""
     h = hashlib.sha256(text.encode("utf-8")).hexdigest()
     np.random.seed(int(h[:8], 16) % (2**32))
     return np.random.randn(dim).astype(np.float64) * 0.1
 
 
 def _project_384_to_32(vec: np.ndarray) -> np.ndarray:
-    """Project 384-dim vector to 32 via mean pooling of consecutive chunks."""
+    """Проекция вектора 384-dim в 32-dim через усреднение по блокам (mean pooling)."""
     if vec.shape[0] != SEMANTIC_DIM:
         if vec.shape[0] >= EMBED_DIM:
             return vec[:EMBED_DIM].astype(np.float64)
@@ -35,6 +36,7 @@ def _project_384_to_32(vec: np.ndarray) -> np.ndarray:
 
 
 def _load_semantic_encoder():
+    """Загрузить модель sentence-transformers (ленивая загрузка)."""
     global _encoder
     if _encoder is not None:
         return _encoder
@@ -48,8 +50,8 @@ def _load_semantic_encoder():
 
 def get_embedding(text: str, dim: int = EMBED_DIM, use_semantic: Optional[bool] = None) -> np.ndarray:
     """
-    Unified embedding: semantic (if available) with projection, else hash.
-    use_semantic: None=from env USE_SEMANTIC_EMBEDDINGS, True/False override.
+    Единый эмбеддинг: семантический (если доступен) с проекцией, иначе hash.
+    use_semantic: None — из env USE_SEMANTIC_EMBEDDINGS, True/False — переопределение.
     """
     if use_semantic is None:
         env_val = os.getenv("USE_SEMANTIC_EMBEDDINGS", "").lower()

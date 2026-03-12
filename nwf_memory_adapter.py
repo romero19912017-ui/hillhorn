@@ -14,7 +14,7 @@ import numpy as np
 from nwf import Charge, Field
 
 # -----------------------------------------------------------------------------
-# Config
+# Конфигурация
 # -----------------------------------------------------------------------------
 
 MOLTBOT_WORKSPACE = Path(
@@ -30,19 +30,19 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 HF_MODEL = os.getenv("HF_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
 # -----------------------------------------------------------------------------
-# Embedding
+# Эмбеддинги: hash или Hugging Face (если HF_TOKEN задан)
 # -----------------------------------------------------------------------------
 
 
 def _hash_embedding(text: str, dim: int = EMBED_DIM) -> np.ndarray:
-    """Deterministic hash-based embedding."""
+    """Детерминированный эмбеддинг на основе SHA256."""
     h = hashlib.sha256(text.encode("utf-8")).hexdigest()
     np.random.seed(int(h[:8], 16) % (2**32))
     return np.random.randn(dim).astype(np.float64) * 0.1
 
 
 def _hf_embedding(text: str, dim: int = 384) -> Optional[np.ndarray]:
-    """Semantic embedding via sentence-transformers (optional)."""
+    """Семантический эмбеддинг через sentence-transformers (опционально)."""
     try:
         from sentence_transformers import SentenceTransformer
         token = HF_TOKEN or os.getenv("HF_TOKEN") or None
@@ -56,7 +56,7 @@ def _hf_embedding(text: str, dim: int = 384) -> Optional[np.ndarray]:
 
 
 def get_embedding(text: str, dim: int = EMBED_DIM) -> np.ndarray:
-    """Get embedding: HF if available, else hash-based. Always returns shape (dim,)."""
+    """Получить эмбеддинг: HF если доступен, иначе hash. Всегда возвращает shape (dim,)."""
     emb = _hf_embedding(text, dim=384)
     if emb is not None:
         if len(emb) > dim:
@@ -67,12 +67,12 @@ def get_embedding(text: str, dim: int = EMBED_DIM) -> np.ndarray:
     return _hash_embedding(text, dim)
 
 # -----------------------------------------------------------------------------
-# Markdown parsing
+# Парсинг Markdown: разбиение на блоки по заголовкам
 # -----------------------------------------------------------------------------
 
 
 def split_md_blocks(content: str) -> List[str]:
-    """Split markdown into semantic blocks (headers + content)."""
+    """Разбить Markdown на семантические блоки (заголовок + содержимое)."""
     blocks = []
     current = []
     for line in content.split("\n"):
@@ -88,7 +88,7 @@ def split_md_blocks(content: str) -> List[str]:
 
 
 def collect_memory_blocks(workspace: Path) -> List[Dict[str, Any]]:
-    """Collect blocks from SOUL, USER, MEMORY, memory/*.md."""
+    """Собрать блоки из SOUL.md, USER.md, MEMORY.md и memory/*.md."""
     blocks = []
     for name in MEMORY_FILES:
         p = workspace / name
@@ -121,12 +121,12 @@ def collect_memory_blocks(workspace: Path) -> List[Dict[str, Any]]:
     return blocks
 
 # -----------------------------------------------------------------------------
-# NWF sync
+# Синхронизация с NWF-полем
 # -----------------------------------------------------------------------------
 
 
 def blocks_to_charges(blocks: List[Dict[str, Any]]) -> List[Charge]:
-    """Convert blocks to NWF Charges."""
+    """Преобразовать блоки в NWF Charges (заряды)."""
     charges = []
     for blk in blocks:
         text = blk.get("text", "")
@@ -144,8 +144,8 @@ def sync_workspace_to_nwf(
     field_path: Optional[Path] = None,
 ) -> int:
     """
-    Sync Moltbot/OpenCloud workspace markdown to NWF Field (full replace).
-    Returns number of charges written.
+    Синхронизировать Markdown рабочей области Moltbot/OpenCloud с NWF-полем (полная замена).
+    Возвращает количество записанных зарядов.
     """
     ws = workspace or MOLTBOT_WORKSPACE
     fp = field_path or NWF_FIELD_PATH
@@ -164,7 +164,7 @@ def sync_workspace_to_nwf(
 
 
 def search_similar(query: str, k: int = 5, field_path: Optional[Path] = None) -> List[Dict]:
-    """Search similar memory blocks in NWF field."""
+    """Поиск похожих блоков памяти в NWF-поле."""
     fp = field_path or NWF_FIELD_PATH
     if not (fp / "meta.json").exists():
         return []
@@ -186,7 +186,7 @@ def search_similar(query: str, k: int = 5, field_path: Optional[Path] = None) ->
 
 
 def run_watch(workspace: Optional[Path] = None, field_path: Optional[Path] = None) -> None:
-    """Watch workspace for .md changes and sync to NWF."""
+    """Отслеживать изменения .md в workspace и синхронизировать с NWF."""
     try:
         from watchdog.observers import Observer
         from watchdog.events import FileSystemEventHandler
