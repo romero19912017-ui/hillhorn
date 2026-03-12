@@ -74,8 +74,9 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 REQUEST_TIMEOUT = float(os.getenv("DEEPSEEK_TIMEOUT", "60"))
 MAX_RETRIES = int(os.getenv("DEEPSEEK_MAX_RETRIES", "3"))
-NWF_MEMORY_PATH = Path(os.getenv("NWF_MEMORY_PATH", "data/deepseek_memory"))
-USAGE_FILE = ROOT / "data" / "deepseek_usage.json"
+_DATA_ROOT = Path(os.getenv("HILLHORN_DATA_ROOT", "C:/hillhorn_data"))
+NWF_MEMORY_PATH = Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
+USAGE_FILE = _DATA_ROOT / "deepseek_usage.json"
 EMBED_DIM = 32
 CHAT_MODEL = os.getenv("DEEPSEEK_CHAT_MODEL", "deepseek-chat")
 
@@ -639,8 +640,25 @@ async def debug_reviewer() -> Dict[str, Any]:
 
 @app.get("/v1/memory/health")
 async def memory_health() -> Dict[str, Any]:
-    """Quick check that Memory API is loaded."""
-    return {"ok": True, "version": "1.0"}
+    """Health check: NWF, embed, cache stats."""
+    out: Dict[str, Any] = {"ok": True, "version": "1.0"}
+    try:
+        nwf_ok = (NWF_MEMORY_PATH / "meta.json").exists()
+        out["nwf"] = "ok" if nwf_ok else "missing"
+    except Exception:
+        out["nwf"] = "error"
+    try:
+        from embeddings import get_embedding
+        get_embedding("test", dim=32)
+        out["embed"] = "ok"
+    except Exception as e:
+        out["embed"] = "hash" if "HF" not in str(e) else "error"
+    try:
+        from tools import get_cache_stats
+        out["cache"] = get_cache_stats()
+    except Exception:
+        pass
+    return out
 
 
 class MemorySearchRequest(BaseModel):
@@ -682,7 +700,7 @@ async def memory_search(req: MemorySearchRequest) -> Dict[str, Any]:
             })
         try:
             from nwf_memory_adapter import search_similar
-            nwf_path = ROOT / os.getenv("NWF_MEMORY_ADAPTER_PATH", "data/nwf_opencloud")
+            nwf_path = Path(os.getenv("NWF_MEMORY_ADAPTER_PATH", str(_DATA_ROOT / "nwf_opencloud")))
             if (nwf_path / "meta.json").exists():
                 similar = search_similar(req.query, k=min(5, req.top_k), field_path=nwf_path)
                 for s in similar:

@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent
-CODE_INDEX_PATH = Path(os.getenv("CODE_INDEX_PATH", str(ROOT / "data" / "code_index")))
+_DATA_ROOT = Path(os.getenv("HILLHORN_DATA_ROOT", "C:/hillhorn_data"))
+CODE_INDEX_PATH = Path(os.getenv("CODE_INDEX_PATH", str(_DATA_ROOT / "code_index")))
 
 # Каталоги, исключаемые из индексации
 DEFAULT_IGNORE = [

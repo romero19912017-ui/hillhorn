@@ -20,7 +20,8 @@ from nwf import Charge, Field
 MOLTBOT_WORKSPACE = Path(
     os.getenv("MOLTBOT_WORKSPACE", os.path.expanduser("~/.openclaw/workspace"))
 )
-NWF_FIELD_PATH = Path(os.getenv("NWF_MEMORY_ADAPTER_PATH", "data/nwf_opencloud"))
+_DATA_ROOT = Path(os.getenv("HILLHORN_DATA_ROOT", "C:/hillhorn_data"))
+NWF_FIELD_PATH = Path(os.getenv("NWF_MEMORY_ADAPTER_PATH", str(_DATA_ROOT / "nwf_opencloud")))
 EMBED_DIM = 32
 MEMORY_FILES = ["SOUL.md", "USER.md", "MEMORY.md"]
 MEMORY_DIR = "memory"
@@ -164,7 +165,7 @@ def sync_workspace_to_nwf(
 
 
 def search_similar(query: str, k: int = 5, field_path: Optional[Path] = None) -> List[Dict]:
-    """Поиск похожих блоков памяти в NWF-поле."""
+    """Поиск похожих блоков в NWF-поле. Симметричный Махаланобис."""
     fp = field_path or NWF_FIELD_PATH
     if not (fp / "meta.json").exists():
         return []
@@ -173,15 +174,25 @@ def search_similar(query: str, k: int = 5, field_path: Optional[Path] = None) ->
     if len(field) == 0:
         return []
     qz = get_embedding(query)
-    charges = field.get_charges()
+    qz = np.asarray(qz, dtype=np.float64)
+    if qz.shape[0] != EMBED_DIM:
+        qz = qz[:EMBED_DIM] if qz.shape[0] >= EMBED_DIM else np.pad(qz, (0, EMBED_DIM - qz.shape[0]))
+    qsigma = np.full(EMBED_DIM, 0.2, dtype=np.float64)
+    query_charge = Charge(z=qz, sigma=qsigma)
+    try:
+        res = field.search(query_charge, k=k, metric="symmetric")
+        dists, indices = np.atleast_1d(res[0]), np.atleast_1d(res[1])
+    except Exception:
+        charges = field.get_charges()
+        labels = field.get_labels()
+        z_all = np.stack([c.z for c in charges], axis=0)
+        d = np.linalg.norm(qz - z_all, axis=1)
+        indices = np.argsort(d)[:k]
     labels = field.get_labels()
-    z_all = np.stack([c.z for c in charges], axis=0)
-    d = np.linalg.norm(qz - z_all, axis=1)
-    idx = np.argsort(d)[:k]
     return [
-        {"text": labels[i].get("text", "")[:300], "source": labels[i].get("source", "")}
-        for i in idx
-        if isinstance(labels[i], dict)
+        {"text": labels[int(i)].get("text", "")[:300], "source": labels[int(i)].get("source", "")}
+        for i in indices
+        if int(i) < len(labels) and isinstance(labels[int(i)], dict)
     ]
 
 

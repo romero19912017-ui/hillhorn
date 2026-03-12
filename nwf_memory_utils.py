@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parent
-NWF_MEMORY_PATH = Path(__file__).resolve().parent / "data" / "deepseek_memory"
+_DATA_ROOT = Path(os.getenv("HILLHORN_DATA_ROOT", "C:/hillhorn_data"))
+NWF_MEMORY_PATH = Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
 
 
 def prune_field(
@@ -19,7 +21,7 @@ def prune_field(
 ) -> int:
     """Удалить старые/низкоприоритетные заряды. Возвращает количество удалённых."""
     import os
-    fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
+    fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
     if not (fp / "meta.json").exists():
         return 0
     try:
@@ -57,7 +59,7 @@ def export_field(field_path: Optional[Path] = None, out_path: Optional[Path] = N
     """Экспортировать NWF-поле в каталог (копирование)."""
     import shutil
     import os
-    fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
+    fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
     out = out_path or fp.parent / f"{fp.name}_export_{int(time.time())}"
     if not fp.exists():
         return False
@@ -68,11 +70,54 @@ def export_field(field_path: Optional[Path] = None, out_path: Optional[Path] = N
         return False
 
 
+def boost_charges_alpha(
+    indices: List[int],
+    delta: float = 0.1,
+    max_alpha: float = 2.0,
+    field_path: Optional[Path] = None,
+) -> int:
+    """
+    Увеличить alpha для зарядов по индексам (успешное использование).
+    При неудаче можно вызывать с delta < 0. Возвращает количество обновлённых зарядов.
+    """
+    fp = field_path or Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
+    if not (fp / "meta.json").exists():
+        return 0
+    try:
+        from nwf import Charge, Field
+
+        field = Field()
+        field.load(fp)
+        charges = field.get_charges()
+        labels = field.get_labels()
+        if not charges or not labels:
+            return 0
+        n_charges = len(charges)
+        n_labels = len(labels)
+        idx_set = frozenset(i for i in indices if 0 <= i < n_charges)
+        if not idx_set:
+            return 0
+        new_field = Field()
+        for i in range(n_charges):
+            c = charges[i]
+            lab = labels[i] if i < n_labels else {}
+            alpha = getattr(c, "alpha", 1.0)
+            if i in idx_set:
+                alpha = min(max_alpha, max(0.05, alpha + delta))
+            new_c = Charge(z=c.z, sigma=c.sigma, alpha=float(alpha))
+            lab_list = [lab] if isinstance(lab, dict) else [{}]
+            new_field.add(new_c, labels=lab_list, ids=[f"boost_{i}"])  # noqa: E501
+        new_field.save(fp)
+        return len(idx_set)
+    except Exception:
+        return 0
+
+
 def import_field(src_path: Path, dest_path: Optional[Path] = None) -> bool:
     """Импортировать NWF-поле из пути. Заменяет dest."""
     import shutil
     import os
-    dest = dest_path or Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
+    dest = dest_path or Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
     if not src_path.exists():
         return False
     try:

@@ -2,11 +2,11 @@
 # Usage: .\scripts\diagnose.ps1
 
 $ErrorActionPreference = "Continue"
-$base = Split-Path -Parent $PSScriptRoot
-if (-not $base) { $base = "c:\Hillhorn" }
-$dataDir = Join-Path $base "data"
-$activityPath = Join-Path $dataDir "hillhorn_activity.json"
-$errorsPath = Join-Path $dataDir "hillhorn_errors.log"
+$dataRoot = $env:HILLHORN_DATA_ROOT
+if (-not $dataRoot) { $dataRoot = "C:\hillhorn_data" }
+$dataDir = $dataRoot
+$activityPath = Join-Path $dataRoot "hillhorn_activity.json"
+$errorsPath = Join-Path $dataRoot "hillhorn_errors.log"
 
 Write-Host "=== Hillhorn Diagnostic ===" -ForegroundColor Cyan
 Write-Host ""
@@ -71,11 +71,11 @@ if (Test-Path $errorsPath) {
 
 # 6. Data directory
 Write-Host ""
-Write-Host "6. Data directory" -ForegroundColor Yellow
-if (Test-Path $dataDir) {
-    Write-Host "   [OK] $dataDir exists" -ForegroundColor Green
+Write-Host "6. Data directory (C:\hillhorn_data)" -ForegroundColor Yellow
+if (Test-Path $dataRoot) {
+    Write-Host "   [OK] $dataRoot exists" -ForegroundColor Green
 } else {
-    Write-Host "   [WARN] $dataDir not found" -ForegroundColor Yellow
+    Write-Host "   [WARN] $dataRoot not found (will be created on first use)" -ForegroundColor Yellow
 }
 
 Write-Host ""

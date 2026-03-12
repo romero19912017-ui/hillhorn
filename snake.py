@@ -19,30 +19,36 @@ def init():
     grid[food[1]][food[0]] = FOOD
     return grid, snake, food, (1, 0)
 
-def draw(grid):
+def draw(grid, score=0):
     clear()
     for row in grid:
         print("".join(row))
-    print("WASD - move, Q - quit")
+    print("WASD - move, Q - quit | Score:", score)
 
 def main():
     grid, snake, food, dxdy = init()
     dx, dy = dxdy
+    score = 0
     while True:
-        draw(grid)
+        draw(grid, score)
         if msvcrt.kbhit():
             c = msvcrt.getch().decode("utf-8", errors="ignore").lower()
-            if c == "q": break
+            if c == "q":
+                break
             if c == "w": dx, dy = 0, -1
             elif c == "s": dx, dy = 0, 1
             elif c == "a": dx, dy = -1, 0
             elif c == "d": dx, dy = 1, 0
         nx, ny = snake[0][0] + dx, snake[0][1] + dy
+        if (nx, ny) in snake[:-1]:
+            print("Game Over - self collision")
+            break
         cell = grid[ny][nx] if 0 <= ny < H and 0 <= nx < W else WALL
         if cell == WALL:
             print("Game Over")
             break
         if cell == FOOD:
+            score += 1
             snake.insert(0, (nx, ny))
             grid[ny][nx] = SNAKE
             fx, fy = random.randint(1, W-2), random.randint(1, H-2)

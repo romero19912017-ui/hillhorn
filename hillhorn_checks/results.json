@@ -1,27 +1,12 @@
 {
-  "01": {
-    "time": 7.131524200000058,
-    "search_relevant": "yes",
-    "calls": 3
+  "time": 2.169916099999682,
+  "timings": {
+    "files": 0.00025839999989329954,
+    "search": 2.167725999999675,
+    "write": 0.0004840000001422595,
+    "add": 0.001447699999971519
   },
-  "02": {
-    "time": 0.034912099999928614,
-    "search_found": false,
-    "calls": 3
-  },
-  "03": {
-    "time": 45.23970240000017,
-    "plan_len": 1335,
-    "calls": 3
-  },
-  "04": {
-    "time": 39.227788500000315,
-    "review_len": 2802,
-    "calls": 2
-  },
-  "05": {
-    "time": 2,
-    "search_found": true,
-    "calls": 2
-  }
+  "search_results": 5,
+  "add_ok": true,
+  "calls": 4
 }

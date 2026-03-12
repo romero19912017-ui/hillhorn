@@ -184,8 +184,9 @@ pip install -r requirements.txt
 | `DEEPSEEK_BASE_URL` | URL API DeepSeek | https://api.deepseek.com/v1 |
 | `HILLHORN_GATEWAY_URL` | URL Gateway | http://localhost:8001 |
 | `HILLHORN_PROJECT_ID` | Путь к проекту по умолчанию | Корень Hillhorn |
-| `NWF_MEMORY_PATH` | Путь к NWF-памяти | data/deepseek_memory |
-| `NWF_MEMORY_ADAPTER_PATH` | Путь к адаптеру OpenCloud | data/nwf_opencloud |
+| `HILLHORN_DATA_ROOT` | Корень хранилища (на диске C) | C:/hillhorn_data |
+| `NWF_MEMORY_PATH` | Путь к NWF-памяти | {DATA_ROOT}/deepseek_memory |
+| `NWF_MEMORY_ADAPTER_PATH` | Путь к адаптеру OpenCloud | {DATA_ROOT}/nwf_opencloud |
 | `USE_SEMANTIC_EMBEDDINGS` | Использовать sentence-transformers | 0 |
 | `NWF_PRUNE_THRESHOLD` | Порог для автоочистки памяти | 12000 |
 
@@ -215,13 +216,15 @@ c:\Hillhorn\
   agents.py                # Классы агентов (CoderAgent, PlannerAgent и др.)
   code_indexer.py          # Индексация кода для семантического поиска
   nwf_memory_utils.py      # Очистка, экспорт, импорт NWF-памяти
-  data/
-    deepseek_memory/       # NWF-память (запросы к DeepSeek)
-    nwf_opencloud/         # NWF-память из SOUL/USER/MEMORY
-    hillhorn_calls.jsonl   # Лог вызовов MCP
-    hillhorn_activity.json # Последняя активность
-    deepseek_usage.json    # Использование токенов
   scripts/                 # PowerShell и Python скрипты
+
+C:\hillhorn_data\          # Хранилище (вне проекта, на диске C)
+  deepseek_memory/         # NWF-память (запросы к DeepSeek)
+  nwf_opencloud/           # NWF-память из SOUL/USER/MEMORY
+  code_index/              # Индекс кода
+  hillhorn_calls.jsonl     # Лог вызовов MCP
+  hillhorn_activity.json   # Последняя активность
+  deepseek_usage.json      # Использование токенов
 ```
 
 ---

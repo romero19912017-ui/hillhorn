@@ -6,9 +6,11 @@
 - **minimal**: только hillhorn_search и hillhorn_add_turn (без consult - экономия API)
 - **consult_only**: без обязательного search перед read_file (быстрые правки)
 
-## Напоминание
+## Критично: первый вызов
 
-Если в первых 2 сообщениях диалога не вызывал hillhorn_search - напомни себе вызвать его перед read_file.
+- В НАЧАЛЕ каждой новой задачи: сначала hillhorn_get_context, затем hillhorn_search.
+- HILLHORN_MODE в .env: full/minimal/consult_only. По умолчанию full.
+- Если в первых 2 сообщениях не вызывал hillhorn_get_context - напомни себе: "Сначала hillhorn_get_context" и сделай это перед read_file.
 
 ## Quick start (каждая новая задача)
 

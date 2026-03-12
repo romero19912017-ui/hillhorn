@@ -16,16 +16,28 @@ from fastmcp import FastMCP
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+# Хранилище на диске C (вне проекта)
+_DATA_ROOT = Path(os.getenv("HILLHORN_DATA_ROOT", "C:/hillhorn_data"))
 GATEWAY_URL = os.getenv("HILLHORN_GATEWAY_URL", "http://localhost:8001")
 DEFAULT_PROJECT_ID = os.getenv("HILLHORN_PROJECT_ID", str(ROOT))
 DEFAULT_MAX_TOKENS = int(os.getenv("HILLHORN_MAX_TOKENS", "1200"))
-ACTIVITY_FILE = ROOT / "data" / "hillhorn_activity.json"
-ERRORS_LOG = ROOT / "data" / "hillhorn_errors.log"
-CALLS_LOG = ROOT / "data" / "hillhorn_calls.jsonl"
+ACTIVITY_FILE = _DATA_ROOT / "hillhorn_activity.json"
+ERRORS_LOG = _DATA_ROOT / "hillhorn_errors.log"
+CALLS_LOG = _DATA_ROOT / "hillhorn_calls.jsonl"
 
-# Retry: 2 попытки, 2 сек задержка (ConnectError)
-POST_RETRIES = 2
-POST_RETRY_DELAY = 2.0
+# Retry: exponential backoff (HILLHORN_IMPROVEMENTS_PLAN)
+POST_RETRIES = int(os.getenv("HILLHORN_POST_RETRIES", "3"))
+POST_RETRY_BASE_DELAY = float(os.getenv("HILLHORN_POST_RETRY_DELAY", "2.0"))
+
+# HTTP pool: один клиент на процесс (HILLHORN_OPTIMIZATION_PLAN)
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=90)
+    return _http_client
 
 
 def _log_activity(tool_name: str) -> None:
@@ -38,11 +50,14 @@ def _log_activity(tool_name: str) -> None:
         pass
 
 
-def _log_call(tool_name: str, duration_ms: float) -> None:
+def _log_call(tool_name: str, duration_ms: float, cache_hit: bool = False) -> None:
     """Добавление вызова в hillhorn_calls.jsonl для истории."""
     try:
         CALLS_LOG.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps({"tool": tool_name, "ts": time.time(), "duration_ms": round(duration_ms, 0)}) + "\n"
+        rec = {"tool": tool_name, "ts": time.time(), "duration_ms": round(duration_ms, 0)}
+        if cache_hit:
+            rec["cache_hit"] = True
+        line = json.dumps(rec) + "\n"
         with open(CALLS_LOG, "a", encoding="utf-8") as f:
             f.write(line)
     except Exception:
@@ -67,25 +82,26 @@ def _wrap(tool_name: str, content: str) -> str:
 
 
 async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """POST JSON в Gateway с retry при ConnectError."""
+    """POST JSON в Gateway с retry при ConnectError. HTTP pool."""
     url = f"{GATEWAY_URL.rstrip('/')}{path}"
     last_err: Optional[Exception] = None
     for attempt in range(POST_RETRIES):
         try:
-            async with httpx.AsyncClient(timeout=90) as client:
-                r = await client.post(url, json=payload)
-                r.raise_for_status()
-                return r.json()
+            client = _get_http_client()
+            r = await client.post(url, json=payload)
+            r.raise_for_status()
+            return r.json()
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             last_err = e
             if attempt < POST_RETRIES - 1:
-                await asyncio.sleep(POST_RETRY_DELAY)
+                delay = POST_RETRY_BASE_DELAY * (2 ** attempt)
+                await asyncio.sleep(delay)
     raise last_err  # type: ignore[misc]
 
 
 mcp = FastMCP(
     "hillhorn",
-    instructions="Hillhorn - smart memory with DeepSeek. Search, add, index, consult agents.",
+    instructions="Hillhorn: smart memory. ALWAYS call hillhorn_get_context first, then hillhorn_search before read_file. Add with hillhorn_add_turn after important work.",
 )
 
 
@@ -103,17 +119,34 @@ async def _search_memory_direct(
             query, k=top_k, workspace_id=project_id,
             kind_filter=kind_filter, recency_boost=recency_boost,
         )
-        items = [{"text": r.get("text", ""), "source": r.get("agent_type", "memory")}
-                 for r in result.get("results", [])]
+        cache_hit = result.get("_cache_hit", False)
+        mem_items = [
+            {
+                "text": r.get("text", ""),
+                "source": r.get("agent_type", "memory"),
+                "agreement_ratio": r.get("agreement_ratio"),
+                "potential": r.get("potential"),
+            }
+            for r in result.get("results", [])
+        ]
+        sim_items: List[Dict[str, Any]] = []
         try:
             from nwf_memory_adapter import search_similar
-            nwf_path = ROOT / os.getenv("NWF_MEMORY_ADAPTER_PATH", "data/nwf_opencloud")
+            nwf_path = Path(os.getenv("NWF_MEMORY_ADAPTER_PATH", str(_DATA_ROOT / "nwf_opencloud")))
             if (nwf_path / "meta.json").exists():
                 for s in search_similar(query, k=min(5, top_k), field_path=nwf_path):
-                    items.append({"text": s.get("text", ""), "source": s.get("source", "workspace")})
+                    sim_items.append({
+                        "text": s.get("text", ""),
+                        "source": s.get("source", "workspace"),
+                        "agreement_ratio": None,
+                        "potential": None,
+                    })
         except Exception:
             pass
-        return {"results": items[:top_k]}
+        n_mem = min(top_k, len(mem_items))
+        n_sim = min(top_k - n_mem, len(sim_items))
+        items = mem_items[:n_mem] + sim_items[:n_sim]
+        return {"results": items, "_cache_hit": cache_hit}
     except Exception as e:
         return {"results": [], "error": str(e)}
 
@@ -152,16 +185,24 @@ async def hillhorn_get_context(
     project_id: str = DEFAULT_PROJECT_ID,
     include_memory_search: bool = True,
     memory_top_k: int = 5,
+    kind_filter: Optional[List[str]] = None,
 ) -> str:
-    """Получить контекст проекта: SOUL, USER, MEMORY и свежая память. Вызывать в начале сессии."""
+    """Get project context. Call FIRST in session. Returns SOUL, USER, MEMORY + memory search. kind_filter: doc, code, conversation."""
     t0 = time.perf_counter()
     ctx_parts = []
     files_ctx = _read_project_context(project_id)
     if files_ctx:
         ctx_parts.append(files_ctx)
+    _cache_hit = False
     if include_memory_search:
-        data = await _search_memory_direct("общая информация о проекте", memory_top_k, project_id)
+        data = await _search_memory_direct(
+            "общая информация о проекте", memory_top_k, project_id,
+            kind_filter=kind_filter,
+        )
         results = data.get("results", [])
+        _cache_hit = data.get("_cache_hit", False)
+    else:
+        results = []
         if results:
             lines = []
             for i, r in enumerate(results, 1):
@@ -174,7 +215,7 @@ async def hillhorn_get_context(
     if not ctx_parts:
         return _wrap("hillhorn_get_context", "Контекст проекта не найден (нет SOUL/USER/MEMORY, память пуста).")
     _log_activity("hillhorn_get_context")
-    _log_call("hillhorn_get_context", (time.perf_counter() - t0) * 1000)
+    _log_call("hillhorn_get_context", (time.perf_counter() - t0) * 1000, cache_hit=_cache_hit if include_memory_search else False)
     return _wrap("hillhorn_get_context", "\n\n---\n\n".join(ctx_parts))
 
 
@@ -186,7 +227,7 @@ async def hillhorn_search(
     kind_filter: Optional[List[str]] = None,
     recency_boost: bool = False,
 ) -> str:
-    """Семантический поиск в памяти Hillhorn. kind_filter: doc, code, conversation. recency_boost — приоритет свежим."""
+    """Search memory. Call before read_file. query=topic, kind_filter=doc|code|conversation, recency_boost for recent."""
     t0 = time.perf_counter()
     try:
         data = await _search_memory_direct(
@@ -195,11 +236,11 @@ async def hillhorn_search(
         )
         results = data.get("results", [])
         if data.get("error"):
-            _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000)
+            _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000, cache_hit=data.get("_cache_hit", False))
             return _wrap("hillhorn_search", f"Search error: {data['error']}")
         if not results:
             _log_activity("hillhorn_search")
-            _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000)
+            _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000, cache_hit=data.get("_cache_hit", False))
             return _wrap("hillhorn_search", f"Память пуста (новый проект). project_id={project_id}")
         lines = []
         for i, r in enumerate(results, 1):
@@ -207,7 +248,7 @@ async def hillhorn_search(
             source = r.get("source", "")
             lines.append(f"{i}. [{source}] {text}")
         _log_activity("hillhorn_search")
-        _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000)
+        _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000, cache_hit=data.get("_cache_hit", False))
         return _wrap("hillhorn_search", "\n".join(lines))
     except Exception as e:
         _log_call("hillhorn_search", (time.perf_counter() - t0) * 1000)
@@ -222,7 +263,7 @@ async def hillhorn_add_turn(
     kind: str = "conversation",
     file_path: Optional[str] = None,
 ) -> str:
-    """Добавить факт или реплику в память Hillhorn. Использовать после важных решений или изучения кода."""
+    """Save fact/solution to memory. Call after important work. kind=summary|doc|code."""
     t0 = time.perf_counter()
     try:
         data = await _add_memory_direct(text, kind, role, file_path, project_id)
@@ -242,7 +283,7 @@ async def hillhorn_index_file(
     content: str,
     project_id: str = DEFAULT_PROJECT_ID,
 ) -> str:
-    """Проиндексировать содержимое файла в память. Для критичных файлов проекта."""
+    """Index file content to memory. For README, key files."""
     t0 = time.perf_counter()
     try:
         data = await _add_memory_direct(f"[{file_path}]\n{content}", "code", "file", file_path, project_id)
@@ -270,7 +311,7 @@ async def hillhorn_consult_agent(
     extra_context: Optional[List[str]] = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """Консультация агента Hillhorn: planner, coder, reviewer, chat. extra_context: список фрагментов текста."""
+    """DeepSeek agent: planner, coder, reviewer, chat. extra_context: text fragments. code_to_review: code string."""
     allowed = ("planner", "coder", "reviewer", "chat", "architect", "documenter")
     if agent_type not in allowed:
         return _wrap("hillhorn_consult_agent", f"Unknown agent. Use: {', '.join(allowed)}")
@@ -332,7 +373,7 @@ async def hillhorn_consult_with_memory(
     extra_context: Optional[List[str]] = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """Консультация DeepSeek с памятью проекта. planner только для сложных задач. Экономит API."""
+    """DeepSeek with project memory. planner=complex tasks, reviewer=code review. HILLHORN_MODE=full required."""
     allowed = ("planner", "coder", "reviewer", "chat", "architect", "documenter")
     if agent_type not in allowed:
         return _wrap("hillhorn_consult_with_memory", f"Unknown agent. Use: {', '.join(allowed)}")
@@ -349,7 +390,9 @@ async def hillhorn_consult_with_memory(
             for r in results:
                 text = r.get("text", "")[:200]
                 source = r.get("source", "memory")
-                lines.append(f"[{source}] {text}")
+                ar = r.get("agreement_ratio")
+                conf = f", confidence={ar:.0%}" if ar is not None else ""
+                lines.append(f"[{source}{conf}] {text}")
             context.append({"role": "system", "content": "Context from project memory:\n" + "\n".join(lines)})
         files_ctx = _read_project_context(project_id)
         if files_ctx:

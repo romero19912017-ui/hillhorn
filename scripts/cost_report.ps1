@@ -1,8 +1,8 @@
 # Hillhorn / DeepSeek API cost report
 # Usage: .\scripts\cost_report.ps1 [day|week]
 
-$base = Split-Path -Parent $PSScriptRoot
-$usagePath = Join-Path $base "data\deepseek_usage.json"
+$dataRoot = $env:HILLHORN_DATA_ROOT; if (-not $dataRoot) { $dataRoot = "C:\hillhorn_data" }
+$usagePath = Join-Path $dataRoot "deepseek_usage.json"
 
 # Prices per 1M tokens (DeepSeek API, approximate)
 $PRICE_INPUT  = 0.14   # $ per 1M input

@@ -8,6 +8,7 @@ import shlex
 import os
 from contextvars import ContextVar
 from pathlib import Path
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 # Корень проекта и рабочая директория
@@ -25,8 +26,9 @@ def set_workspace_override(path: Optional[str]) -> None:
     """Установить переопределение рабочей директории (для Gateway)."""
     _workspace_override.set(Path(path) if (path and path.strip()) else None)
 
-# Путь к NWF-памяти и URL Gateway
-NWF_MEMORY_PATH = Path(os.getenv("NWF_MEMORY_PATH", str(ROOT / "data" / "deepseek_memory")))
+# Хранилище на C:\hillhorn_data (переменная HILLHORN_DATA_ROOT)
+_DATA_ROOT = Path(os.getenv("HILLHORN_DATA_ROOT", "C:/hillhorn_data"))
+NWF_MEMORY_PATH = Path(os.getenv("NWF_MEMORY_PATH", str(_DATA_ROOT / "deepseek_memory")))
 GATEWAY_URL = os.getenv("DEEPSEEK_GATEWAY_URL", "http://localhost:8001")
 EMBED_DIM = 32
 CMD_TIMEOUT = 60
@@ -38,6 +40,45 @@ ALLOWED_CMDS = frozenset([
 ])
 # Опасные паттерны — запрещены в командах
 DANGEROUS_PATTERNS = ("rm -rf", "del /f", "format", "> /dev/sd", "&&", "|", ";", "`")
+
+# Lazy load + session cache (HILLHORN_OPTIMIZATION_PLAN)
+_nwf_field_cache: Optional[tuple] = None  # (Field, path_str)
+SEARCH_CACHE_MAX = int(os.getenv("HILLHORN_SEARCH_CACHE_MAX", "100"))
+_search_cache: OrderedDict = OrderedDict()
+_cache_hits = 0
+_cache_misses = 0
+
+
+def _invalidate_nwf_cache() -> None:
+    """Сброс кеша NWF при add_to_memory."""
+    global _nwf_field_cache, _search_cache
+    _nwf_field_cache = None
+    _search_cache.clear()
+
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Метрики кеша поиска."""
+    total = _cache_hits + _cache_misses
+    return {
+        "hits": _cache_hits,
+        "misses": _cache_misses,
+        "hit_rate": _cache_hits / total if total > 0 else 0.0,
+        "size": len(_search_cache),
+    }
+
+
+def _get_field(fp: Path):
+    """Ленивая загрузка Field. Кеш инвалидируется при add_to_memory."""
+    global _nwf_field_cache
+    fp_str = str(fp.resolve())
+    if _nwf_field_cache is not None and _nwf_field_cache[1] == fp_str:
+        return _nwf_field_cache[0]
+    from nwf import Field
+    field = Field()
+    field.load(fp)
+    _nwf_field_cache = (field, fp_str)
+    return field
+
 
 def _embed(text: str, dim: int = EMBED_DIM):
     """Единый эмбеддинг через модуль embeddings."""
@@ -68,30 +109,94 @@ async def search_memory(
     kind_filter: Optional[List[str]] = None,
     recency_boost: bool = False,
 ) -> Dict[str, Any]:
-    """Поиск похожих запросов в NWF-памяти. add_to_memory и search используют одно хранилище."""
+    """Поиск по NWF-памяти. Симметричный Махаланобис (metric=symmetric)."""
     try:
         import numpy as np
         import time as _time
-        from nwf import Field
+        from nwf import Charge, Field
         fp = NWF_MEMORY_PATH
         if not (fp / "meta.json").exists():
             return {"results": [], "error": "Memory not found"}
-        field = Field()
-        field.load(fp)
+        cache_key = (query, workspace_id or "", k, frozenset(kind_filter or []), recency_boost)
+        global _cache_hits, _cache_misses
+        if cache_key in _search_cache:
+            _search_cache.move_to_end(cache_key)
+            _cache_hits += 1
+            out = dict(_search_cache[cache_key])
+            out["_cache_hit"] = True
+            return out
+        _cache_misses += 1
+        field = _get_field(fp)
         if len(field) == 0:
             return {"results": []}
+        # Запрос как Charge(z, sigma) для симметричного Махаланобиса
         qz = _embed(query)
-        charges = field.get_charges()
-        labels = field.get_labels()
-        z_all = np.stack([c.z for c in charges], axis=0)
-        d = np.linalg.norm(qz - z_all, axis=1)
-        idx = np.argsort(d)[: min(k * 3, len(charges))]
+        qsigma = np.full(EMBED_DIM, 0.2, dtype=np.float64)
+        query_charge = Charge(z=qz, sigma=qsigma)
+        search_k = min(k * 5, len(field))
+        dists, indices = np.array([]), np.array([], dtype=np.int64)
+        try:
+            res = field.search(query_charge, k=search_k, metric="symmetric")
+            dists = np.atleast_1d(res[0])
+            indices = np.atleast_1d(res[1])
+        except Exception:
+            # Fallback: L2 при сбое (напр. 1 заряд в nwf)
+            charges = field.get_charges()
+            z_all = np.stack([c.z for c in charges], axis=0)
+            d = np.linalg.norm(qz - z_all, axis=1)
+            idx_sort = np.argsort(d)[:search_k]
+            dists = d[idx_sort]
+            indices = idx_sort
+        labels_all = field.get_labels()
+
+        def _get_kind(lab: dict) -> str:
+            tags = lab.get("tags") or []
+            return next((t for t in tags if t in ("doc", "code", "conversation")), "conversation")
+
+        def _same_project(lab: dict, proj: Optional[str]) -> bool:
+            if not proj:
+                return True
+            tags = lab.get("tags") or []
+            has_any = any(t.startswith("project:") for t in tags)
+            return not has_any or f"project:{proj}" in tags
+
+        # agreement_ratio: доля k ближайших соседей с тем же kind/project (O(n) с кэшем)
+        n_neigh = len(indices)
+        agreement_cache: Dict[int, float] = {}
+        if n_neigh > 0:
+            kind_cache: Dict[int, str] = {}
+            same_project_cache: Dict[int, bool] = {}
+            for ji in indices:
+                j = int(ji)
+                if j < len(labels_all) and j not in kind_cache:
+                    ll = labels_all[j]
+                    if isinstance(ll, dict):
+                        kind_cache[j] = _get_kind(ll)
+                        same_project_cache[j] = _same_project(ll, workspace_id)
+            for idx in indices:
+                idx = int(idx)
+                if idx >= len(labels_all):
+                    continue
+                kind_ref = kind_cache.get(idx)
+                if kind_ref is None:
+                    agreement_cache[idx] = 0.0
+                    continue
+                same = sum(
+                    1
+                    for ji in indices
+                    if kind_cache.get(int(ji)) == kind_ref and same_project_cache.get(int(ji), False)
+                )
+                agreement_cache[idx] = same / n_neigh
+
         results = []
         project_tag = f"project:{workspace_id}" if workspace_id else None
         kind_set = frozenset(kind_filter) if kind_filter else None
         now_ts = _time.time()
-        for i in idx:
-            lab = labels[int(i)]
+        for j, i in enumerate(indices):
+            i = int(i)
+            if i >= len(labels_all):
+                continue
+            lab = labels_all[i]
             if not isinstance(lab, dict):
                 continue
             tags = lab.get("tags") or []
@@ -100,14 +205,18 @@ async def search_memory(
                 if has_project and project_tag not in tags:
                     continue
             if kind_set:
-                lab_kind = next((t for t in tags if t in ("doc", "code", "conversation")), "conversation")
+                lab_kind = _get_kind(lab)
                 if lab_kind not in kind_set:
                     continue
+            d_val = float(dists[j]) if j < len(dists) else 0.0
             text = str(lab.get("content", lab.get("response_preview", lab.get("prompt", ""))))[:300]
             item = {"text": text, "agent_type": lab.get("agent_type", "memory"), "success": lab.get("success", True)}
+            # Потенциал phi(r) = exp(-0.5 * d^2) для интерпретации/калибровки
+            item["potential"] = round(float(np.exp(-0.5 * (d_val ** 2))), 4)
+            item["agreement_ratio"] = round(agreement_cache.get(i, 0.0), 3)
             if recency_boost:
                 ts = lab.get("ts", 0)
-                score = float(d[i])
+                score = d_val
                 if ts:
                     age_hours = (now_ts - ts) / 3600
                     score *= 1.0 + age_hours * 0.05
@@ -117,7 +226,11 @@ async def search_memory(
             results.sort(key=lambda r: r.get("_score", float("inf")))
             for r in results:
                 r.pop("_score", None)
-        return {"results": results[:k]}
+        out = {"results": results[:k]}
+        while len(_search_cache) >= SEARCH_CACHE_MAX:
+            _search_cache.popitem(last=False)
+        _search_cache[cache_key] = out
+        return out
     except Exception as e:
         return {"results": [], "error": str(e)}
 
@@ -144,6 +257,7 @@ async def add_to_memory(content: str, tags: Optional[List[str]] = None, project_
         label = {"content": content[:500], "tags": tag_list, "ts": _t.time()}
         field.add(charge, labels=[label])
         field.save(NWF_MEMORY_PATH)
+        _invalidate_nwf_cache()
         return {"status": "ok", "message": "Added to memory"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
