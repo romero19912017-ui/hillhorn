@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "hillhorn": {
+      "command": "c:\\Hillhorn\\venv_hillhorn\\Scripts\\python.exe",
+      "type": "stdio",
+      "args": [
+        "c:\\Hillhorn\\hillhorn_mcp_server.py"
+      ],
+      "cwd": "c:\\Hillhorn",
+      "env": {
+        "HILLHORN_GATEWAY_URL": "http://localhost:8001",
+        "HILLHORN_PROJECT_ID": "c:\\Hillhorn",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

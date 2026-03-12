@@ -1,0 +1,17 @@
+{
+  "name": "hillhorn-status",
+  "displayName": "Hillhorn Status",
+  "publisher": "hillhorn",
+  "description": "Status bar indicator for Hillhorn MCP usage",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.74.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "hillhorn.status", "title": "Hillhorn: Show Status" },
+      { "command": "hillhorn.showHistory", "title": "Hillhorn: Show History" }
+    ]
+  }
+}

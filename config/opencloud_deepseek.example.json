@@ -1,0 +1,23 @@
+{
+  "models": {
+    "providers": {
+      "deepseek": {
+        "baseUrl": "https://api.deepseek.com/v1",
+        "apiKey": "${DEEPSEEK_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "deepseek-chat", "name": "DeepSeek V3", "contextWindow": 128000 },
+          { "id": "deepseek-reasoner", "name": "DeepSeek R1", "contextWindow": 128000 }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "deepseek/deepseek-chat",
+        "fallbacks": ["deepseek/deepseek-reasoner"]
+      }
+    }
+  }
+}

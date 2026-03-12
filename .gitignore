@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.mypy_cache/
+data/
+moltbot/
+openclaw/
+vscode/
+jepa-reference/
+jepa-wms/
+nwf-core/

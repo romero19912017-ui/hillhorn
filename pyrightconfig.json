@@ -1,0 +1,18 @@
+{
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.mypy_cache",
+    "**/venv_hillhorn",
+    "**/venv",
+    "**/.venv",
+    "vscode",
+    "moltbot",
+    "openclaw",
+    "jepa-reference",
+    "jepa-wms",
+    "nwf-core",
+    "dist",
+    "data"
+  ]
+}

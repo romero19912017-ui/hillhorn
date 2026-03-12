@@ -1,0 +1,82 @@
+{
+  "name": "hillhorn-chat",
+  "displayName": "Hillhorn Chat",
+  "description": "AI Chat powered by Hillhorn (DeepSeek + NWF-JEPA)",
+  "version": "0.1.0",
+  "publisher": "hillhorn",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onView:hillhornChat"],
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": { "supported": true }
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hillhorn",
+          "title": "Hillhorn",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "hillhorn": [
+        {
+          "type": "webview",
+          "id": "hillhornChat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "hillhorn.openChat",
+        "title": "Open Hillhorn Chat"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "Hillhorn",
+        "properties": {
+          "hillhorn.gatewayUrl": {
+            "type": "string",
+            "default": "http://localhost:8001",
+            "description": "DeepSeek Gateway URL"
+          },
+          "hillhorn.workspaceId": {
+            "type": "string",
+            "default": "default",
+            "description": "Workspace ID for NWF memory"
+          },
+          "hillhorn.agentType": {
+            "type": "string",
+            "default": "coder",
+            "enum": ["chat", "coder", "planner", "reviewer", "architect", "documenter"],
+            "description": "Default agent type"
+          },
+          "hillhorn.autoAgent": {
+            "type": "boolean",
+            "default": false,
+            "description": "Auto-select agent from memory"
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.70.0",
+    "@types/node": "^18.x",
+    "typescript": "^5.0.0"
+  }
+}

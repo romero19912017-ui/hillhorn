@@ -1,0 +1,17 @@
+# NWF-JEPA Predictor
+numpy>=1.21
+torch>=2.0
+
+# DeepSeek MCP Gateway
+fastapi>=0.100
+uvicorn>=0.22
+python-multipart>=0.0.6
+httpx>=0.24
+python-dotenv>=1.0
+
+# nwf-core: pip install "C:\nwf\libraries\nwf-core[faiss]" (локально)
+# Optional: for nwf_memory_adapter --watch
+watchdog>=3.0
+
+# Hillhorn MCP Server (replacement for NWF extension)
+fastmcp>=2.0

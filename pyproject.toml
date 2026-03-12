@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hillhorn"
+version = "0.1.0"
+description = "NWF-JEPA + DeepSeek MCP Gateway. Интеллектуальная среда разработки с памятью NWF."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Hillhorn" }]
+keywords = ["jepa", "nwf", "deepseek", "ai", "agents"]

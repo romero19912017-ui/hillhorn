@@ -1,0 +1,14 @@
+# Hillhorn VS Code build - Windows host
+# Usage: docker compose -f docker/docker-compose.yml run --rm vscode-build
+
+services:
+  vscode-build:
+    image: node:22-bookworm-slim
+    working_dir: /workspace/vscode
+    volumes:
+      - ..:/workspace
+    command: >
+      bash -c "apt-get update -qq && apt-get install -y -qq python3 make g++ git
+      && npm install && npm run compile"
+    stdin_open: true
+    tty: true

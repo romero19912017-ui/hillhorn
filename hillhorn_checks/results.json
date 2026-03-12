@@ -1,0 +1,27 @@
+{
+  "01": {
+    "time": 7.131524200000058,
+    "search_relevant": "yes",
+    "calls": 3
+  },
+  "02": {
+    "time": 0.034912099999928614,
+    "search_found": false,
+    "calls": 3
+  },
+  "03": {
+    "time": 45.23970240000017,
+    "plan_len": 1335,
+    "calls": 3
+  },
+  "04": {
+    "time": 39.227788500000315,
+    "review_len": 2802,
+    "calls": 2
+  },
+  "05": {
+    "time": 2,
+    "search_found": true,
+    "calls": 2
+  }
+}

@@ -1,0 +1,86 @@
+# Hillhorn Rules - ОБЯЗАТЕЛЬНЫЙ workflow
+
+## HILLHORN_MODE (опционально в .env)
+
+- **full** (по умолчанию): полный workflow - get_context, search, consult, add_turn
+- **minimal**: только hillhorn_search и hillhorn_add_turn (без consult - экономия API)
+- **consult_only**: без обязательного search перед read_file (быстрые правки)
+
+## Напоминание
+
+Если в первых 2 сообщениях диалога не вызывал hillhorn_search - напомни себе вызвать его перед read_file.
+
+## Quick start (каждая новая задача)
+
+1. hillhorn_get_context(project_id="c:\Hillhorn") - контекст SOUL + память (одним вызовом)
+2. hillhorn_search("тема файла") - перед чтением конкретных файлов
+3. Работа с кодом (чтение, редактирование)
+4. hillhorn_consult_with_memory(agent_type, prompt) - planner/reviewer с памятью
+5. hillhorn_add_turn(суть решения, kind="summary") - после завершения
+
+## Жесткие правила
+
+### ЗАПРЕЩЕНО читать файлы до получения контекста
+
+- НЕ вызывай read_file до hillhorn_get_context или hillhorn_search
+- Исключение: Hillhorn MCP недоступен - сообщи и работай без памяти
+
+### 1. ОБЯЗАТЕЛЬНО hillhorn_get_context в начале
+
+- Первым действием: hillhorn_get_context(project_id="c:\Hillhorn")
+- Возвращает SOUL.md, USER.md, MEMORY.md + результаты поиска в памяти
+- Если память пуста - увидишь "новый проект"
+
+### 2. hillhorn_search - перед чтением файлов
+
+- hillhorn_search("общая информация о проекте")
+- Перед чтением файла: hillhorn_search с темой ("как работает X", "структура Y")
+- Пустой результат = "Память пуста (новый проект)"
+
+### 3. hillhorn_consult_with_memory - planner/reviewer
+
+- planner ТОЛЬКО при сложной задаче (3+ шага) - экономит API (reasoner дороже chat)
+- Простые вопросы: chat
+- После кода: hillhorn_consult_with_memory("reviewer", "проверь: [код]")
+- DeepSeek получает память проекта как context
+- Альтернатива: hillhorn_consult_agent (без memory)
+
+### 4. ОБЯЗАТЕЛЬНО hillhorn_add_turn после важного
+
+- После решения: hillhorn_add_turn("решение: [кратко]", kind="summary", role="system")
+- После архитектуры: kind="doc"
+- После изучения кода: kind="code"
+
+### 5. Порядок (нарушать нельзя)
+
+1. hillhorn_get_context
+2. hillhorn_search - по теме
+3. hillhorn_consult_with_memory(planner) - при сложной задаче
+4. read_file / edit
+5. hillhorn_consult_with_memory(reviewer) - после кода
+6. hillhorn_add_turn - сохранить
+
+### 6. Инструменты
+
+| Инструмент | Когда |
+|------------|-------|
+| hillhorn_get_context | Начало сессии |
+| hillhorn_search | Перед read_file |
+| hillhorn_consult_with_memory | planner, reviewer (с памятью) |
+| hillhorn_consult_agent | chat, общие вопросы |
+| hillhorn_add_turn | После важного |
+| hillhorn_index_file | README, ключевые файлы |
+
+### 7. Параметры
+
+- project_id: "c:\Hillhorn"
+
+## Hillhorn - только Agent
+
+Инструменты Hillhorn доступны в Agent/Composer. В Chat могут быть недоступны.
+Индикатор: Settings > Tools & MCP (зелёный = подключён). Последнее использование: Task "Hillhorn: Status".
+
+## Hillhorn недоступен
+
+- Сообщи: "Hillhorn не подключен. Запусти: .\scripts\start_all_background.ps1"
+- Продолжай без Hillhorn
